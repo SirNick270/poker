@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Premium Pastel Poker | Texas Hold'em</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* ==========================================================================
+           1. CORE VARIABLES & THEME (Premium Pastel Casino)
+           ========================================================================== */
+        :root {
+            /* Palette */
+            --bg-ambient: #F3F1EC;
+            --table-felt: #A8E6CF; /* Pastel Mint Green */
+            --table-rim: #FFD3B6; /* Pastel Peach/Wood */
+            --table-shadow: #88C5B0;
+            --accent-pink: #FF8B94;
+            --accent-blue: #A8D8EA;
+            --accent-yellow: #FCF1B5;
+            --text-main: #4A4A4A;
+            --text-light: #8E8E8E;
+            
+            /* Card Settings */
+            --card-w: 70px;
+            --card-h: 100px;
+            --card-radius: 6px;
+            --suit-red: #FF6B6B;
+            --suit-black: #2D3436;
+            
+            /* Physics & Shadows */
+            --shadow-sm: 0 4px 6px rgba(0,0,0,0.05);
+            --shadow-md: 0 8px 15px rgba(0,0,0,0.1);
+            --shadow-lg: 0 20px 40px rgba(0,0,0,0.15);
+            --shadow-rim: inset 0 0 40px rgba(0,0,0,0.1), 0 20px 50px rgba(0,0,0,0.2);
+            --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; user-select: none; }
+        body { background: radial-gradient(circle at 50% 50%, #ffffff 0%, var(--bg-ambient) 100%); color: var(--text-main); height: 100vh; overflow: hidden; display: flex; flex-direction: column; perspective: 1200px; }
+        
+        /* Typography & Inputs */
+        h1, h2, h3 { letter-spacing: -0.03em; font-weight: 700; }
+        input[type="text"], input[type="range"] { width: 100%; padding: 14px; border: 2px solid #EAEAEA; border-radius: 12px; font-size: 16px; outline: none; transition: 0.3s; background: white; }
+        input[type="text"]:focus { border-color: var(--accent-pink); box-shadow: 0 0 0 4px rgba(255, 139, 148, 0.2); }
+        
+        /* Buttons */
+        .btn { padding: 14px 28px; border: none; border-radius: 12px; font-weight: 600; font-size: 16px; cursor: pointer; transition: all 0.2s var(--ease-in-out); position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: var(--shadow-sm); }
+        .btn:active { transform: scale(0.96); }
+        .btn::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(255,255,255,0.2), transparent); opacity: 0; transition: 0.2s; }
+        .btn:hover::after { opacity: 1; }
+        
+        .btn-pink { background: var(--accent-pink); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .btn-blue { background: var(--accent-blue); color: white; }
+        .btn-dark { background: var(--text-main); color: white; }
+        .btn-outline { background: transparent; border: 2px solid var(--text-light); color: var(--text-main); }
+
+        /* ==========================================================================
+           2. SCREENS & LAYOUT
+           ========================================================================== */
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.5s ease; z-index: 1; }
+        .screen.active { opacity: 1; pointer-events: auto; z-index: 10; }
+
+        /* Login / Lobby */
+        .lobby-box { background: white; padding: 40px; border-radius: 24px; box-shadow: var(--shadow-lg); width: 90%; max-width: 420px; text-align: center; position: relative; z-index: 2; transform: translateY(20px); animation: slideUp 0.6s var(--ease-out-back) forwards; }
+        .logo-svg { width: 100px; height: 100px; margin: 0 auto 20px; animation: float 4s ease-in-out infinite; }
+        .divider { display: flex; align-items: center; margin: 24px 0; color: var(--text-light); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+        .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #EAEAEA; margin: 0 10px; }
+
+        /* ==========================================================================
+           3. THE POKER TABLE (Skeuomorphic & 3D)
+           ========================================================================== */
+        #game-screen { background: radial-gradient(ellipse at center, var(--bg-ambient) 0%, #DCD9D1 100%); padding: 20px; justify-content: space-between; }
+        
+        .top-bar { width: 100%; max-width: 1200px; display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: rgba(255,255,255,0.6); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: var(--shadow-sm); z-index: 100; margin-bottom: 20px;}
+        .room-badge { background: var(--text-main); color: white; padding: 6px 12px; border-radius: 8px; font-family: monospace; font-size: 18px; letter-spacing: 2px; }
+
+        .table-wrapper { position: relative; width: 100%; max-width: 900px; flex-grow: 1; display: flex; justify-content: center; align-items: center; perspective: 1500px; margin: 40px 0; }
+        
+        .poker-table { width: 95%; height: 65%; min-height: 400px; background: radial-gradient(ellipse at center, var(--table-felt) 0%, var(--table-shadow) 100%); border-radius: 900px; box-shadow: var(--shadow-rim); border: 24px solid var(--table-rim); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: rotateX(15deg); transform-style: preserve-3d; transition: all 0.5s; }
+        
+        /* Table Details (Lines) */
+        .table-inner-line { position: absolute; width: calc(100% - 60px); height: calc(100% - 60px); border: 2px solid rgba(255,255,255,0.2); border-radius: 900px; pointer-events: none; }
+        
+        .pot-container { display: flex; flex-direction: column; align-items: center; transform: translateZ(20px); margin-bottom: 20px; }
+        .pot-amount { background: rgba(0,0,0,0.3); color: white; padding: 6px 16px; border-radius: 20px; font-size: 18px; font-weight: bold; backdrop-filter: blur(5px); display: flex; align-items: center; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+        .chip-svg { width: 20px; height: 20px; }
+
+        /* ==========================================================================
+           4. 3D CARDS & COMMUNITY BOARD
+           ========================================================================== */
+        .board { display: flex; gap: 12px; height: var(--card-h); perspective: 1000px; transform: translateZ(30px); }
+        
+        .card { width: var(--card-w); height: var(--card-h); position: relative; transform-style: preserve-3d; transition: transform 0.6s var(--ease-out-back); }
+        .card .face { position: absolute; width: 100%; height: 100%; border-radius: var(--card-radius); backface-visibility: hidden; box-shadow: var(--shadow-md); display: flex; justify-content: center; align-items: center; border: 1px solid rgba(0,0,0,0.1); }
+        
+        /* Card Front */
+        .card .front { background: white; transform: rotateY(180deg); }
+        .card .front svg { width: 100%; height: 100%; border-radius: var(--card-radius); }
+        
+        /* Card Back (Pastel Pattern) */
+        .card .back { background: var(--accent-blue); background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.2) 0, rgba(255,255,255,0.2) 2px, transparent 2px, transparent 6px); border: 4px solid white; transform: rotateY(0deg); }
+        
+        .card.revealed { transform: rotateY(180deg); }
+
+        /* Dealer Dealing Animation */
+        @keyframes dealCard {
+            0% { transform: translate3d(0, -300px, -200px) rotateY(0deg) scale(0.5); opacity: 0; }
+            100% { transform: translate3d(0, 0, 0) rotateY(180deg) scale(1); opacity: 1; }
+        }
+        @keyframes dealCardHidden {
+            0% { transform: translate3d(0, -300px, -200px) rotateY(0deg) scale(0.5); opacity: 0; }
+            100% { transform: translate3d(0, 0, 0) rotateY(0deg) scale(1); opacity: 1; }
+        }
+
+        /* ==========================================================================
+           5. PLAYERS & AVATARS
+           ========================================================================== */
+        .players-layer { position: absolute; width: 100%; height: 100%; top: 0; left: 0; pointer-events: none; transform-style: preserve-3d; }
+        .seat { position: absolute; display: flex; flex-direction: column; align-items: center; transform-style: preserve-3d; transition: all 0.5s ease; z-index: 50; }
+        
+        .avatar-box { width: 70px; height: 70px; background: white; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 800; font-size: 24px; box-shadow: var(--shadow-lg); border: 4px solid white; position: relative; z-index: 3; transition: 0.3s; }
+        .seat.active .avatar-box { border-color: var(--accent-pink); box-shadow: 0 0 0 6px rgba(255, 139, 148, 0.3), var(--shadow-lg); transform: scale(1.1); }
+        .seat.folded .avatar-box { filter: grayscale(100%); opacity: 0.6; }
+        
+        .info-box { background: white; padding: 6px 14px; border-radius: 12px; font-size: 13px; font-weight: bold; margin-top: -15px; box-shadow: var(--shadow-md); z-index: 4; text-align: center; border: 1px solid #eee; display: flex; flex-direction: column; gap: 2px;}
+        .info-chips { color: var(--text-light); font-size: 11px; }
+
+        .player-cards { display: flex; gap: -20px; margin-top: 10px; transform: scale(0.7) translateZ(10px); perspective: 500px; }
+        .player-cards .card:nth-child(1) { transform: translateX(10px) rotate(-10deg) rotateY(180deg); }
+        .player-cards .card:nth-child(2) { transform: translateX(-10px) rotate(10deg) rotateY(180deg); }
+        .player-cards .card.hidden-card:nth-child(1) { transform: translateX(10px) rotate(-10deg) rotateY(0deg); }
+        .player-cards .card.hidden-card:nth-child(2) { transform: translateX(-10px) rotate(10deg) rotateY(0deg); }
+        
+        /* Seat Positions mapping (Responsive logic handled via CSS variables + calc) */
+        .seat-0 { bottom: -10%; left: 50%; transform: translateX(-50%); }
+        .seat-1 { top: 50%; left: -5%; transform: translateY(-50%); }
+        .seat-2 { top: -10%; left: 20%; }
+        .seat-3 { top: -10%; right: 20%; }
+        .seat-4 { top: 50%; right: -5%; transform: translateY(-50%); }
+
+        /* Betting visual indicator (Chips in front of player) */
+        .bet-indicator { position: absolute; top: -40px; background: rgba(255,255,255,0.9); padding: 4px 10px; border-radius: 10px; font-size: 12px; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 4px; box-shadow: var(--shadow-sm); opacity: 0; transition: 0.3s; }
+        .seat.has-bet .bet-indicator { opacity: 1; transform: translateY(-10px); }
+
+        /* ==========================================================================
+           6. CONTROLS & ACTION UI
+           ========================================================================== */
+        .controls-container { width: 100%; max-width: 800px; background: white; border-radius: 24px 24px 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,0.1); padding: 20px 30px; display: flex; flex-direction: column; gap: 15px; z-index: 100; position: relative; transition: transform 0.4s; }
+        .controls-container.disabled { pointer-events: none; opacity: 0.6; filter: grayscale(50%); }
+        
+        .bet-slider-area { display: flex; align-items: center; gap: 15px; width: 100%; }
+        .bet-slider-area input[type=range] { flex-grow: 1; accent-color: var(--accent-pink); }
+        .bet-amount-display { background: var(--bg-ambient); padding: 10px 20px; border-radius: 12px; font-weight: bold; min-width: 80px; text-align: center; font-size: 18px;}
+        
+        .action-buttons { display: flex; gap: 15px; justify-content: space-between; width: 100%; }
+        .action-buttons button { flex: 1; height: 60px; font-size: 18px; border-radius: 16px; }
+        .btn-fold { background: #FFE5E5; color: #D32F2F; }
+        .btn-check { background: #E5F6DF; color: #388E3C; }
+        .btn-raise { background: var(--accent-pink); color: white; }
+
+        .host-panel { background: #2D3436; color: white; padding: 15px; border-radius: 12px; display: none; width: 100%; justify-content: center; gap: 10px; margin-top: 10px; }
+
+        /* ==========================================================================
+           7. MODALS, TOASTS & ANIMATIONS
+           ========================================================================== */
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); background: white; padding: 12px 24px; border-radius: 30px; box-shadow: var(--shadow-lg); font-weight: 600; z-index: 9999; transition: all 0.4s var(--ease-out-back); display: flex; align-items: center; gap: 10px; }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+
+        .winner-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 9000; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; text-align: center;}
+        .winner-overlay.active { display: flex; animation: fadeIn 0.5s ease; }
+        .winner-cards { display: flex; gap: 10px; margin: 20px 0; transform: scale(1.5); }
+
+        @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Particle Confetti (generated via JS) */
+        .particle { position: absolute; width: 10px; height: 10px; border-radius: 50%; pointer-events: none; z-index: 9999; }
+    </style>
+</head>
+<body>
+
+    <!-- ==========================================
+         LOBBY SCREEN
+         ========================================== -->
+    <div id="lobby" class="screen active">
+        <div class="lobby-box">
+            <!-- Premium SVG Logo -->
+            <svg class="logo-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="chipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#FFB7B2" />
+                        <stop offset="100%" stop-color="#FF8B94" />
+                    </linearGradient>
+                    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feDropShadow dx="0" dy="8" stdDeviation="8" flood-opacity="0.2"/>
+                    </filter>
+                </defs>
+                <circle cx="100" cy="100" r="90" fill="url(#chipGrad)" filter="url(#dropShadow)" />
+                <circle cx="100" cy="100" r="75" fill="none" stroke="white" stroke-width="6" stroke-dasharray="25 15"/>
+                <path d="M 100 40 L 125 110 L 65 65 L 135 65 L 75 110 Z" fill="white"/>
+            </svg>
+            
+            <h1>Pastel Poker</h1>
+            <p style="color: var(--text-light); margin: 10px 0 30px;">Texas Hold'em. Premium Experience.</p>
+            
+            <input type="text" id="playerName" placeholder="Tu Nombre" maxlength="12" style="margin-bottom: 15px;">
+            <button class="btn btn-pink" onclick="createRoom()" style="width: 100%;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                Crear Mesa VIP
+            </button>
+            
+            <div class="divider">O únete a amigos</div>
+            
+            <input type="text" id="roomCode" placeholder="Código de la mesa" maxlength="6" style="text-transform: uppercase; margin-bottom: 15px; text-align: center; letter-spacing: 2px;">
+            <button class="btn btn-outline" onclick="joinRoom()" style="width: 100%;">Entrar a la Mesa</button>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         GAME SCREEN
+         ========================================== -->
+    <div id="game" class="screen">
+        <div class="top-bar">
+            <div><strong>Jugador:</strong> <span id="myNameDisplay">---</span></div>
+            <div class="room-badge" id="displayRoomCode">---</div>
+            <button class="btn btn-outline" onclick="leaveRoom()" style="padding: 6px 12px; font-size: 12px;">Salir</button>
+        </div>
+
+        <div class="table-wrapper">
+            <div class="poker-table">
+                <div class="table-inner-line"></div>
+                
+                <div class="pot-container">
+                    <div class="pot-amount">
+                        <svg class="chip-svg" viewBox="0 0 24 24" fill="#FFD700"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6" fill="none" stroke="#B8860B" stroke-width="2" stroke-dasharray="2 2"/></svg>
+                        $<span id="potAmount">0</span>
+                    </div>
+                </div>
+
+                <div class="board" id="communityBoard">
+                    <!-- Cards injected here -->
+                </div>
+
+                <!-- Players Layer (Absolute positioning) -->
+                <div class="players-layer" id="playersLayer"></div>
+            </div>
+        </div>
+
+        <!-- Host Controls -->
+        <div class="host-panel" id="hostPanel">
+            <span style="font-size: 12px; opacity:0.7;">HOST:</span>
+            <button class="btn btn-dark" onclick="startHand()" style="padding: 8px 16px; font-size: 14px;">Repartir Mano</button>
+            <button class="btn btn-dark" onclick="forceNextPhase()" style="padding: 8px 16px; font-size: 14px;">Forzar Fase</button>
+        </div>
+
+        <!-- Player Action Controls -->
+        <div class="controls-container disabled" id="playerControls">
+            <div class="bet-slider-area">
+                <span style="font-weight: bold; color: var(--text-light);">Subir a:</span>
+                <input type="range" id="betSlider" min="0" max="1000" step="10" value="0" oninput="updateBetDisplay()">
+                <div class="bet-amount-display">$<span id="betDisplay">0</span></div>
+            </div>
+            <div class="action-buttons">
+                <button class="btn btn-fold" onclick="submitAction('fold')">Fold</button>
+                <button class="btn btn-check" id="btnCall" onclick="submitAction('call')">Call</button>
+                <button class="btn btn-raise" onclick="submitAction('raise')">Raise</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-pink)" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span id="toastMsg">Mensaje</span>
+    </div>
+
+    <!-- Winner Overlay -->
+    <div id="winnerOverlay" class="winner-overlay">
+        <h1 style="font-size: 48px; color: var(--accent-yellow); margin-bottom: 10px;">¡GANADOR!</h1>
+        <h2 id="winnerName" style="font-size: 32px;">---</h2>
+        <p id="winningHandText" style="font-size: 20px; color: #A8D8EA; margin-top: 10px;">Escalera Real</p>
+        <div class="winner-cards" id="winnerCards"></div>
+        <p style="margin-top: 20px; opacity: 0.7;">El Host iniciará la siguiente mano.</p>
+    </div>
+
+<script>
+    /** =========================================================================
+     * 1. FIREBASE CONFIGURATION (REEMPLAZAR CON TUS DATOS)
+     * ========================================================================= */
+    const firebaseConfig = {
+        apiKey: "TU_API_KEY",
+        authDomain: "TU_PROYECTO.firebaseapp.com",
+        databaseURL: "https://TU_PROYECTO-default-rtdb.firebaseio.com",
+        projectId: "TU_PROYECTO",
+        storageBucket: "TU_PROYECTO.appspot.com",
+        messagingSenderId: "123456789",
+        appId: "1:123456789:web:abcdef"
+    };
+
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    /** =========================================================================
+     * 2. STATE & VARIABLES
+     * ========================================================================= */
+    let myId = 'p_' + Math.random().toString(36).substring(2, 9);
+    let myName = '';
+    let roomCode = '';
+    let isHost = false;
+    let roomRef = null;
+    let state = {};
+    let lastPhase = '';
+    
+    // UI Elements
+    const screenLobby = document.getElementById('lobby');
+    const screenGame = document.getElementById('game');
+    const playerControls = document.getElementById('playerControls');
+    const btnCall = document.getElementById('btnCall');
+    const betSlider = document.getElementById('betSlider');
+    const betDisplay = document.getElementById('betDisplay');
+
+    /** =========================================================================
+     * 3. PREMIUM SVG GENERATOR (CARDS)
+     * ========================================================================= */
+    const svgAssets = {
+        heart: `<path d="M50 30 C50 10 20 10 20 30 C20 50 50 75 50 75 C50 75 80 50 80 30 C80 10 50 10 50 30 Z" fill="var(--suit-red)"/>`,
+        diamond: `<path d="M50 15 L80 45 L50 75 L20 45 Z" fill="var(--suit-red)"/>`,
+        club: `<path d="M50 45 C70 45 70 15 50 15 C30 15 30 45 50 45 C25 45 25 75 50 75 C75 75 75 45 50 45 Z M45 65 L55 65 L55 85 L45 85 Z" fill="var(--suit-black)"/>`,
+        spade: `<path d="M50 15 C20 45 20 65 50 65 C80 65 80 45 50 15 Z M45 60 L55 60 L55 85 L45 85 Z" fill="var(--suit-black)"/>`
+    };
+
+    function getCardHTML(card, isHidden = false, delay = 0) {
+        if (!card || isHidden) {
+            return `
+            <div class="card hidden-card" style="animation: dealCardHidden 0.5s var(--ease-out-back) ${delay}s forwards; opacity:0;">
+                <div class="face back"></div>
+            </div>`;
+        }
+
+        const suits = { 'H': svgAssets.heart, 'D': svgAssets.diamond, 'C': svgAssets.club, 'S': svgAssets.spade };
+        const colors = { 'H': 'var(--suit-red)', 'D': 'var(--suit-red)', 'C': 'var(--suit-black)', 'S': 'var(--suit-black)' };
+        
+        let rankStr = card.rank;
+        if(card.rank === 11) rankStr = 'J';
+        if(card.rank === 12) rankStr = 'Q';
+        if(card.rank === 13) rankStr = 'K';
+        if(card.rank === 14) rankStr = 'A';
+
+        // Advanced Face Graphic for Royalty (Simplified vector representation)
+        let centerGraphic = suits[card.suit];
+        if (card.rank >= 11 && card.rank <= 13) {
+            centerGraphic = `
+                <rect x="25" y="25" width="50" height="50" fill="none" stroke="${colors[card.suit]}" stroke-width="2"/>
+                <circle cx="50" cy="50" r="15" fill="${colors[card.suit]}" opacity="0.2"/>
+                ${suits[card.suit]}
+            `;
+        }
+
+        return `
+        <div class="card revealed" style="animation: dealCard 0.6s var(--ease-out-back) ${delay}s forwards; opacity:0;">
+            <div class="face front">
+                <svg viewBox="0 0 100 100" width="100%" height="100%">
+                    <text x="10" y="25" font-size="22" font-weight="900" fill="${colors[card.suit]}">${rankStr}</text>
+                    <g transform="scale(0.25) translate(10, 110)">${suits[card.suit]}</g>
+                    <g transform="scale(0.6) translate(33, 40)">${centerGraphic}</g>
+                    <text x="90" y="90" font-size="22" font-weight="900" fill="${colors[card.suit]}" transform="rotate(180 90 90)">${rankStr}</text>
+                </svg>
+            </div>
+            <div class="face back"></div>
+        </div>`;
+    }
+
+    /** =========================================================================
+     * 4. LOBBY & FIREBASE LOGIC
+     * ========================================================================= */
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        document.getElementById('toastMsg').innerText = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    function createRoom() {
+        myName = document.getElementById('playerName').value.trim() || 'Jugador VIP';
+        roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+        isHost = true;
+        
+        const initialState = {
+            phase: 'waiting', // waiting, preflop, flop, turn, river, showdown
+            pot: 0,
+            currentBet: 0,
+            turnIndex: 0,
+            dealerIndex: 0,
+            community: [],
+            deck: [],
+            actionLog: 'Mesa creada',
+            players: {}
+        };
+        
+        initialState.players[myId] = {
+            name: myName, chips: 5000, bet: 0, status: 'active', cards: [], seat: 0
+        };
+
+        roomRef = db.ref(`poker_rooms/${roomCode}`);
+        roomRef.set(initialState).then(initGameLoop);
+    }
+
+    function joinRoom() {
+        myName = document.getElementById('playerName').value.trim() || 'Jugador';
+        roomCode = document.getElementById('roomCode').value.toUpperCase();
+        if(!roomCode) return showToast("Introduce un código válido");
+
+        roomRef = db.ref(`poker_rooms/${roomCode}`);
+        roomRef.once('value', snap => {
+            if (snap.exists()) {
+                const s = snap.val();
+                const numPlayers = Object.keys(s.players || {}).length;
+                if(numPlayers >= 5) return showToast("Mesa llena (Máx 5)");
+                
+                roomRef.child('players').child(myId).set({
+                    name: myName, chips: 5000, bet: 0, status: 'waiting', cards: [], seat: numPlayers
+                }).then(initGameLoop);
+            } else {
+                showToast("La mesa no existe");
+            }
+        });
+    }
+
+    function leaveRoom() {
+        if(roomRef) roomRef.child('players').child(myId).remove();
+        location.reload();
+    }
+
+    /** =========================================================================
+     * 5. GAME ENGINE & RENDER LOOP
+     * ========================================================================= */
+    function initGameLoop() {
+        screenLobby.classList.remove('active');
+        screenGame.classList.add('active');
+        document.getElementById('displayRoomCode').innerText = roomCode;
+        document.getElementById('myNameDisplay').innerText = myName;
+        
+        if(isHost) document.getElementById('hostPanel').style.display = 'flex';
+
+        roomRef.on('value', snapshot => {
+            if(!snapshot.exists()) return leaveRoom();
+            state = snapshot.val();
+            renderTable();
+            checkGameState();
+        });
+    }
+
+    function renderTable() {
+        if(!state) return;
+        
+        // Update Pot & Board
+        document.getElementById('potAmount').innerText = state.pot || 0;
+        
+        const boardContainer = document.getElementById('communityBoard');
+        if (state.phase !== lastPhase) {
+            boardContainer.innerHTML = (state.community || []).map((c, i) => getCardHTML(c, false, i*0.2)).join('');
+            lastPhase = state.phase;
+        }
+
+        // Render Players
+        const playersLayer = document.getElementById('playersLayer');
+        playersLayer.innerHTML = '';
+        
+        const players = state.players || {};
+        const pKeys = Object.keys(players);
+        
+        // My seat logic to keep me at the bottom
+        let mySeat = players[myId]?.seat || 0;
+
+        pKeys.forEach((pid) => {
+            const p = players[pid];
+            let visualSeat = (p.seat - mySeat + 5) % 5; // 5 Max players for layout
+            
+            const isMyTurn = (state.phase !== 'waiting' && state.phase !== 'showdown') && (pKeys[state.turnIndex % pKeys.length] === pid);
+            const isMe = pid === myId;
+            
+            // Cards Render
+            let cardsHtml = '';
+            if (p.cards && p.cards.length > 0) {
+                if (isMe || state.phase === 'showdown') {
+                    cardsHtml = p.cards.map((c, i) => getCardHTML(c, false, i*0.1)).join('');
+                } else {
+                    cardsHtml = getCardHTML(null, true, 0) + getCardHTML(null, true, 0.1);
+                }
+            }
+
+            const seatEl = document.createElement('div');
+            seatEl.className = `seat seat-${visualSeat} ${isMyTurn ? 'active' : ''} ${p.status === 'fold' ? 'folded' : ''} ${p.bet > 0 ? 'has-bet' : ''}`;
+            
+            const initial = p.name.charAt(0).toUpperCase();
+            
+            seatEl.innerHTML = `
+                <div class="bet-indicator">
+                    <svg class="chip-svg" viewBox="0 0 24 24" fill="var(--accent-pink)"><circle cx="12" cy="12" r="10"/></svg>
+                    $${p.bet || 0}
+                </div>
+                <div class="avatar-box">${initial}</div>
+                <div class="info-box">
+                    <span>${p.name}</span>
+                    <span class="info-chips">$${p.chips}</span>
+                </div>
+                <div class="player-cards">${cardsHtml}</div>
+            `;
+            playersLayer.appendChild(seatEl);
+
+            // Update Controls if it's my turn
+            if (isMe) {
+                if (isMyTurn && p.status !== 'fold') {
+                    playerControls.classList.remove('disabled');
+                    // Logic for Call/Check text
+                    const callAmount = (state.currentBet || 0) - (p.bet || 0);
+                    btnCall.innerText = callAmount > 0 ? `Call ($${callAmount})` : 'Check';
+                    
+                    // Setup Slider
+                    betSlider.min = callAmount > 0 ? callAmount * 2 : 10; // Min raise
+                    betSlider.max = p.chips;
+                    betSlider.value = betSlider.min;
+                    updateBetDisplay();
+                } else {
+                    playerControls.classList.add('disabled');
+                }
+            }
+        });
+
+        // Hide overlay if not showdown
+        if (state.phase !== 'showdown') {
+            document.getElementById('winnerOverlay').classList.remove('active');
+        }
+    }
+
+    function updateBetDisplay() {
+        document.getElementById('betDisplay').innerText = betSlider.value;
+    }
+
+    /** =========================================================================
+     * 6. POKER LOGIC (HOST)
+     * ========================================================================= */
+    function createDeck() {
+        const suits = ['H', 'D', 'C', 'S'];
+        const deck = [];
+        for (let s of suits) {
+            for (let r = 2; r <= 14; r++) { deck.push({ rank: r, suit: s }); }
+        }
+        // Fisher-Yates Shuffle
+        for (let i = deck.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [deck[i], deck[j]] = [deck[j], deck[i]];
+        }
+        return deck;
+    }
+
+    function startHand() {
+        if(!isHost) return;
+        const deck = createDeck();
+        let updates = {};
+        const pKeys = Object.keys(state.players);
+        
+        pKeys.forEach(pid => {
+            updates[`players/${pid}/cards`] = [deck.pop(), deck.pop()];
+            updates[`players/${pid}/status`] = state.players[pid].chips > 0 ? 'active' : 'out';
+            updates[`players/${pid}/bet`] = 0;
+        });
+
+        // Blinds Logic (Simplified for this version)
+        updates['gameState'] = {
+            phase: 'preflop', pot: 0, currentBet: 0, turnIndex: 1, deck: deck, community: [], actionLog: 'Nueva mano'
+        };
+
+        roomRef.update(updates);
+    }
+
+    function submitAction(action) {
+        const me = state.players[myId];
+        const callAmount = (state.currentBet || 0) - (me.bet || 0);
+        let updates = {};
+        
+        let pKeys = Object.keys(state.players);
+        let nextTurn = state.turnIndex + 1;
+
+        if (action === 'fold') {
+            updates[`players/${myId}/status`] = 'fold';
+        } 
+        else if (action === 'call') {
+            if (me.chips >= callAmount) {
+                updates[`players/${myId}/chips`] = me.chips - callAmount;
+                updates[`players/${myId}/bet`] = me.bet + callAmount;
+                updates['pot'] = state.pot + callAmount;
+            }
+        } 
+        else if (action === 'raise') {
+            let raiseAmt = parseInt(betSlider.value);
+            if (me.chips >= raiseAmt) {
+                updates[`players/${myId}/chips`] = me.chips - raiseAmt;
+                updates[`players/${myId}/bet`] = me.bet + raiseAmt;
+                updates['pot'] = state.pot + raiseAmt;
+                updates['currentBet'] = me.bet + raiseAmt;
+            }
+        }
+
+        // Find next active player
+        let foundNext = false;
+        for(let i=0; i<pKeys.length; i++) {
+            let checkIdx = (nextTurn + i) % pKeys.length;
+            if (state.players[pKeys[checkIdx]].status === 'active' && pKeys[checkIdx] !== myId) {
+                updates['turnIndex'] = checkIdx;
+                foundNext = true;
+                break;
+            }
+        }
+
+        // If no next turn found or everyone called (complex in pure single file, simplified here to Host manual override or simple loop)
+        roomRef.update(updates);
+    }
+
+    function forceNextPhase() {
+        if(!isHost) return;
+        let d = state.deck || [];
+        let c = state.community || [];
+        let p = state.phase;
+        
+        let updates = {};
+        
+        // Collect bets into pot
+        let extraPot = 0;
+        Object.keys(state.players).forEach(pid => {
+            extraPot += state.players[pid].bet || 0;
+            updates[`players/${pid}/bet`] = 0;
+        });
+        
+        updates['pot'] = state.pot + extraPot;
+        updates['currentBet'] = 0;
+
+        if (p === 'preflop') { c.push(d.pop(), d.pop(), d.pop()); p = 'flop'; }
+        else if (p === 'flop') { c.push(d.pop()); p = 'turn'; }
+        else if (p === 'turn') { c.push(d.pop()); p = 'river'; }
+        else if (p === 'river') { 
+            p = 'showdown'; 
+            evaluateWinner(); // Trigger evaluator
+            return; 
+        }
+
+        updates['community'] = c;
+        updates['deck'] = d;
+        updates['phase'] = p;
+        updates['turnIndex'] = 0;
+        roomRef.update(updates);
+    }
+
+    /** =========================================================================
+     * 7. TEXAS HOLD'EM HAND EVALUATOR (PREMIUM ALGORITHM)
+     * ========================================================================= */
+    function evaluateWinner() {
+        if(!isHost) return;
+        const players = state.players;
+        const comm = state.community;
+        let bestScore = -1;
+        let winners = [];
+        let handName = "";
+
+        Object.keys(players).forEach(pid => {
+            if (players[pid].status !== 'fold' && players[pid].status !== 'out') {
+                const pCards = players[pid].cards;
+                if(pCards && pCards.length === 2) {
+                    const allCards = [...pCards, ...comm];
+                    const evalResult = getHandScore(allCards);
+                    if(evalResult.score > bestScore) {
+                        bestScore = evalResult.score;
+                        winners = [pid];
+                        handName = evalResult.name;
+                    } else if (evalResult.score === bestScore) {
+                        winners.push(pid); // Tie
+                    }
+                }
+            }
+        });
+
+        // Distribute Pot
+        const splitPot = Math.floor(state.pot / winners.length);
+        let updates = {};
+        
+        const winnerNames = winners.map(w => players[w].name).join(', ');
+        
+        winners.forEach(w => {
+            updates[`players/${w}/chips`] = players[w].chips + splitPot;
+        });
+
+        updates['phase'] = 'showdown';
+        
+        // Send winner data to UI via firebase so all clients see it
+        updates['lastWinner'] = { names: winnerNames, hand: handName, cards: players[winners[0]].cards };
+        
+        roomRef.update(updates).then(() => {
+            // After 5 seconds, reset to waiting
+            setTimeout(() => {
+                let resetUpdates = { phase: 'waiting', pot: 0, community: [], currentBet: 0 };
+                Object.keys(players).forEach(pid => {
+                    resetUpdates[`players/${pid}/cards`] = [];
+                    resetUpdates[`players/${pid}/bet`] = 0;
+                });
+                roomRef.update(resetUpdates);
+            }, 8000);
+        });
+    }
+
+    // Trigger local overlay when firebase updates showdown
+    function checkGameState() {
+        if(state.phase === 'showdown' && state.lastWinner) {
+            const over = document.getElementById('winnerOverlay');
+            document.getElementById('winnerName').innerText = state.lastWinner.names;
+            document.getElementById('winningHandText').innerText = state.lastWinner.hand;
+            document.getElementById('winnerCards').innerHTML = state.lastWinner.cards.map(c => getCardHTML(c)).join('');
+            over.classList.add('active');
+            createConfetti();
+        }
+    }
+
+    // --- Core Evaluator Algorithm ---
+    // Evaluates 7 cards and returns a score weight to determine absolute winner.
+    function getHandScore(cards) {
+        if(cards.length < 5) return {score: 0, name: "High Card"};
+        
+        // Sort descending by rank
+        cards.sort((a,b) => b.rank - a.rank);
+        
+        const counts = {};
+        const suits = {};
+        cards.forEach(c => {
+            counts[c.rank] = (counts[c.rank] || 0) + 1;
+            suits[c.suit] = (suits[c.suit] || 0) + 1;
+        });
+
+        let isFlush = false, flushSuit = '';
+        for (let s in suits) { if(suits[s] >= 5) { isFlush = true; flushSuit = s; break; } }
+
+        // Find straights
+        let ranks = [...new Set(cards.map(c => c.rank))];
+        // Handle Ace low
+        if(ranks.includes(14)) ranks.push(1);
+        
+        let isStraight = false;
+        let highStraight = 0;
+        let streak = 1;
+        for(let i=0; i<ranks.length-1; i++) {
+            if(ranks[i] - 1 === ranks[i+1]) {
+                streak++;
+                if(streak === 5) { isStraight = true; highStraight = ranks[i-3]; break; }
+            } else { streak = 1; }
+        }
+
+        // Royal/Straight Flush
+        if(isFlush && isStraight) {
+            const flushCards = cards.filter(c => c.suit === flushSuit);
+            // Check if flush cards form straight (simplified here)
+            if(highStraight === 14) return {score: 9000000, name: "Escalera Real"};
+            return {score: 8000000 + highStraight, name: "Escalera de Color"};
+        }
+
+        let pairs = [], trips = [], quads = [];
+        for(let r in counts) {
+            if(counts[r] === 4) quads.push(parseInt(r));
+            if(counts[r] === 3) trips.push(parseInt(r));
+            if(counts[r] === 2) pairs.push(parseInt(r));
+        }
+        quads.sort((a,b)=>b-a); trips.sort((a,b)=>b-a); pairs.sort((a,b)=>b-a);
+
+        if(quads.length > 0) return {score: 7000000 + quads[0]*100, name: "Póker (4 of a Kind)"};
+        if(trips.length > 0 && (pairs.length > 0 || trips.length > 1)) return {score: 6000000 + trips[0]*100, name: "Full House"};
+        if(isFlush) return {score: 5000000 + cards.filter(c=>c.suit===flushSuit)[0].rank, name: "Color (Flush)"};
+        if(isStraight) return {score: 4000000 + highStraight, name: "Escalera (Straight)"};
+        if(trips.length > 0) return {score: 3000000 + trips[0]*100, name: "Trío (3 of a Kind)"};
+        if(pairs.length >= 2) return {score: 2000000 + pairs[0]*100 + pairs[1]*10, name: "Doble Pareja"};
+        if(pairs.length === 1) return {score: 1000000 + pairs[0]*100, name: "Pareja"};
+        
+        return {score: cards[0].rank, name: "Carta Alta"};
+    }
+
+    /** =========================================================================
+     * 8. VISUAL EFFECTS (CONFETTI)
+     * ========================================================================= */
+    function createConfetti() {
+        const colors = ['#FF8B94', '#A8E6CF', '#FFD3B6', '#FCF1B5', '#A8D8EA'];
+        for(let i=0; i<100; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            p.style.left = Math.random() * 100 + 'vw';
+            p.style.top = '-10px';
+            document.body.appendChild(p);
+            
+            const duration = Math.random() * 3 + 2;
+            p.animate([
+                { transform: `translate3d(0,0,0) rotate(0deg)`, opacity: 1 },
+                { transform: `translate3d(${Math.random()*200 - 100}px, 100vh, 0) rotate(${Math.random()*720}deg)`, opacity: 0 }
+            ], { duration: duration * 1000, easing: 'cubic-bezier(.37,0,.63,1)' });
+            
+            setTimeout(() => p.remove(), duration * 1000);
+        }
+    }
+</script>
+</body>
+</html>
